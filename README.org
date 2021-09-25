@@ -1,0 +1,5 @@
+#+TITLE: NixOS
+#+AUTHOR: Niklas Bühler
+Configuration for my virtual Workstation running NixOS
+* Infos
+* Installation
