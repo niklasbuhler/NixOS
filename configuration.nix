@@ -45,7 +45,6 @@
   # Enable the X11 windowing system.
   services.xserver.enable = true;
 
-
   # Enable the GNOME Desktop Environment.
   services.xserver.displayManager.gdm.enable = true;
   services.xserver.desktopManager.gnome.enable = true;
@@ -166,7 +165,8 @@
   users.users.niklas = {
     isNormalUser = true;
     initialPassword = "1234";
-    extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
+    extraGroups = [ "wheel" "audio" "video" ]; # Enable ‘sudo’ for the user.
+    shell = pkgs.zsh;
   };
 
   # allow non-free packages
@@ -177,7 +177,10 @@
   environment.systemPackages = with pkgs; [
     neovim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
     curl
+    texlive.combined.scheme-full
     emacs
+    nextcloud-client
+    megasync
     supercollider
     syncthing
     mumble
@@ -188,7 +191,11 @@
     lilypond
     sox
     gimp
-    fish
+    inkscape
+    scribus
+    ripgrep
+    fd
+    zsh
     git
     ffmpeg
     stow
@@ -200,9 +207,26 @@
     gnupg
     signal-desktop
     discord
+    neofetch
+    youtube-dl
+    lame
+    mixxx
   ];
 
   programs.steam.enable = true;
+  programs.zsh = {
+    enable = true;
+    autosuggestions.enable = true;
+    ohMyZsh.enable = true;
+    ohMyZsh.plugins = [ "git" ];
+    ohMyZsh.theme = "norm";
+    syntaxHighlighting.enable = true;
+  };
+
+  nixpkgs.config.permittedInsecurePackages = [
+    "python2.7-Pillow-6.2.2"
+  ];
+
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
@@ -234,4 +258,3 @@
   system.stateVersion = "21.05"; # Did you read the comment?
 
 }
-
