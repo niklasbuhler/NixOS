@@ -10,43 +10,62 @@
       ./hardware-configuration.nix
     ];
 
-  # Use the GRUB 2 boot loader.
-  boot.loader.grub.enable = true;
-  boot.loader.grub.version = 2;
-  # boot.loader.grub.efiSupport = true;
-  # boot.loader.grub.efiInstallAsRemovable = true;
-  # boot.loader.efi.efiSysMountPoint = "/boot/efi";
-  # Define on which hard drive you want to install Grub.
-  boot.loader.grub.device = "/dev/sda"; # or "nodev" for efi only
+  # Use the systemd-boot EFI boot loader.
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+  boot.initrd.kernelModules = [ "dm-snapshot" ];
+  boot.initrd.luks.devices = { 
+    "disk0" = {
+      device = "/dev/disk/by-uuid/84fc7a03-d901-4065-82c7-622416dd6b4d";
+      preLVM = true;
+      allowDiscards = true;
+    };
+    "disk1" = {
+      device = "/dev/disk/by-uuid/a3c57fff-809c-4769-b96f-ed84820f3dde";
+      preLVM = true;
+      allowDiscards = true;
+    };
+  };
 
-  networking.hostName = "nixos"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
+  networking.hostName = "sebe"; # Define your hostname.
+  networking.networkmanager.enable = true;
 
   # Set your time zone.
   time.timeZone = "Europe/Berlin";
+
+  # Bluetooth
+  hardware.bluetooth.enable = true;
 
   # The global useDHCP flag is deprecated, therefore explicitly set to false here.
   # Per-interface useDHCP will be mandatory in the future, so this generated config
   # replicates the default behaviour.
   networking.useDHCP = false;
-  networking.interfaces.ens33.useDHCP = true;
+  networking.interfaces.enp4s0.useDHCP = true;
 
   # Configure network proxy if necessary
   # networking.proxy.default = "http://user:password@proxy:port/";
   # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
 
   # Select internationalisation properties.
-  i18n.defaultLocale = "de_DE.UTF-8";
+  # i18n.defaultLocale = "en_US.UTF-8";
   console = {
     font = "Lat2-Terminus16";
-    keyMap = "de-latin1";
+    keyMap = "de";
   };
 
   # Enable the X11 windowing system.
   services.xserver.enable = true;
+  services.xserver.videoDrivers = [ "nvidia" ];
+  hardware.opengl.enable = true;
+  hardware.nvidia.package = config.boot.kernelPackages.nvidiaPackages.stable;
+
+  # Enable touchpad support (enabled default in most desktopManager).
+  services.xserver.libinput.enable = true;
 
   # Enable the GNOME Desktop Environment.
   services.xserver.displayManager.gdm.enable = true;
+  # services.xserver.displayManager.autoLogin.enable = true;
+  # services.xserver.displayManager.autoLogin.user = "niklas";
   services.xserver.desktopManager.gnome.enable = true;
   
 
@@ -58,196 +77,248 @@
   # services.printing.enable = true;
 
   # Enable sound.
-  # sound.enable = true;
+  sound.enable = true;
   hardware.pulseaudio.enable = false;
-  # Remove sound.enable or turn it off if you had it set previously, it seems to cause conflicts with pipewire
-  # sound.enable = false;
 
-  # use pipewire
+  # PipeWire
   # rtkit is optional but recommended
   security.rtkit.enable = true;
   services.pipewire = {
     enable = true;
+    wireplumber.enable = true;
+    media-session.enable = false;
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
+    # If you want to use JACK applications, uncomment this
     jack.enable = true;
-    # use the example session manager (no others are packaged yet so this is enabled by default,
-    # no need to redefine it in your config for now)
-    #media-session.enable = true;
+
+    # PipeWire Common
     config.pipewire = {
     "context.properties" = {
-      "link.max-buffers" = 16;
-      "log.level" = 2;
-      "default.clock.rate" = 48000;
-      "default.clock.quantum" = 32;
-      "default.clock.min-quantum" = 32;
-      "default.clock.max-quantum" = 32;
-      "core.daemon" = true;
-      "core.name" = "pipewire-0";
+        "link.max-buffers" = 16;
+        "log.level" = 2;
+        "default.clock.rate" = 48000;
+        "default.clock.quantum" = 256;
+        "default.clock.min-quantum" = 256;
+        "default.clock.max-quantum" = 256;
+        "core.daemon" = true;
+        "core.name" = "pipewire-0";
+      };
+      "context.modules" = [
+        {
+          name = "libpipewire-module-rtkit";
+          args = {
+            "nice.level" = -15;
+            "rt.prio" = 88;
+            "rt.time.soft" = 200000;
+            "rt.time.hard" = 200000;
+          };
+          flags = [ "ifexists" "nofail" ];
+        }
+        { name = "libpipewire-module-protocol-native"; }
+        { name = "libpipewire-module-profiler"; }
+        { name = "libpipewire-module-metadata"; }
+        { name = "libpipewire-module-spa-device-factory"; }
+        { name = "libpipewire-module-spa-node-factory"; }
+        { name = "libpipewire-module-client-node"; }
+        { name = "libpipewire-module-client-device"; }
+        {
+          name = "libpipewire-module-portal";
+          flags = [ "ifexists" "nofail" ];
+        }
+        {
+          name = "libpipewire-module-access";
+          args = {};
+        }
+        { name = "libpipewire-module-adapter"; }
+        { name = "libpipewire-module-link-factory"; }
+        { name = "libpipewire-module-session-manager"; }
+      ];
     };
-    "context.modules" = [
+
+    # PipeWire Pulse
+    config.pipewire-pulse = {
+      "context.properties" = {
+        "log.level" = 2;
+      };
+      "context.modules" = [
+        {
+          name = "libpipewire-module-rtkit";
+          args = {
+            "nice.level" = -15;
+            "rt.prio" = 80;
+            "rt.time.soft" = 200000;
+            "rt.time.hard" = 200000;
+          };
+          flags = [ "ifexists" "nofail" ];
+        }
+        { name = "libpipewire-module-protocol-native"; }
+        { name = "libpipewire-module-client-node"; }
+        { name = "libpipewire-module-adapter"; }
+        { name = "libpipewire-module-metadata"; }
+        {
+          name = "libpipewire-module-protocol-pulse";
+          args = {
+            "pulse.min.req" = "1024/48000";
+            "pulse.default.req" = "1024/48000";
+            "pulse.max.req" = "1024/48000";
+            "pulse.min.quantum" = "1024/48000";
+            "pulse.max.quantum" = "1024/48000";
+            "server.address" = [ "unix:native" ];
+          };
+        }
+      ];
+      "stream.properties" = {
+        "node.latency" = "1024/48000";
+        "resample.quality" = 1;
+      };
+    };
+
+    # PipeWire Bluetooth
+    media-session.config.bluez-monitor.rules = [
       {
-        name = "libpipewire-module-rtkit";
-        args = {
-          "nice.level" = -15;
-          "rt.prio" = 88;
-          "rt.time.soft" = 200000;
-          "rt.time.hard" = 200000;
+        # Matches all cards
+        matches = [ { "device.name" = "~bluez_card.*"; } ];
+        actions = {
+          "update-props" = {
+            "bluez5.reconnect-profiles" = [ "hfp_hf" "hsp_hs" "a2dp_sink" ];
+            # mSBC is not expected to work on all headset + adapter combinations.
+            "bluez5.msbc-support" = true;
+            # SBC-XQ is not expected to work on all headset + adapter combinations.
+            "bluez5.sbc-xq-support" = true;
+          };
         };
-        flags = [ "ifexists" "nofail" ];
-      }
-      { name = "libpipewire-module-protocol-native"; }
-      { name = "libpipewire-module-profiler"; }
-      { name = "libpipewire-module-metadata"; }
-      { name = "libpipewire-module-spa-device-factory"; }
-      { name = "libpipewire-module-spa-node-factory"; }
-      { name = "libpipewire-module-client-node"; }
-      { name = "libpipewire-module-client-device"; }
-      {
-        name = "libpipewire-module-portal";
-        flags = [ "ifexists" "nofail" ];
       }
       {
-        name = "libpipewire-module-access";
-        args = {};
+        matches = [
+          # Matches all sources
+          { "node.name" = "~bluez_input.*"; }
+          # Matches all outputs
+          { "node.name" = "~bluez_output.*"; }
+        ];
       }
-      { name = "libpipewire-module-adapter"; }
-      { name = "libpipewire-module-link-factory"; }
-      { name = "libpipewire-module-session-manager"; }
     ];
   };
-   config.pipewire-pulse = {
-    "context.properties" = {
-      "log.level" = 2;
-    };
-    "context.modules" = [
-      {
-        name = "libpipewire-module-rtkit";
-        args = {
-          "nice.level" = -15;
-          "rt.prio" = 88;
-          "rt.time.soft" = 200000;
-          "rt.time.hard" = 200000;
-        };
-        flags = [ "ifexists" "nofail" ];
-      }
-      { name = "libpipewire-module-protocol-native"; }
-      { name = "libpipewire-module-client-node"; }
-      { name = "libpipewire-module-adapter"; }
-      { name = "libpipewire-module-metadata"; }
-      {
-        name = "libpipewire-module-protocol-pulse";
-        args = {
-          "pulse.min.req" = "32/48000";
-          "pulse.default.req" = "32/48000";
-          "pulse.max.req" = "32/48000";
-          "pulse.min.quantum" = "32/48000";
-          "pulse.max.quantum" = "32/48000";
-          "server.address" = [ "unix:native" ];
-        };
-      }
-    ];
-    "stream.properties" = {
-      "node.latency" = "32/48000";
-      "resample.quality" = 1;
-    };
-  };
-  };
-
-
-
-
-  # Enable touchpad support (enabled default in most desktopManager).
-  services.xserver.libinput.enable = true;
 
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.niklas = {
     isNormalUser = true;
-    initialPassword = "1234";
-    extraGroups = [ "wheel" "audio" "video" ]; # Enable ‘sudo’ for the user.
-    shell = pkgs.zsh;
+    extraGroups = [ "wheel" "audio" "video" "realtime" ]; # Enable ‘sudo’ for the user.
   };
+
+
+  # enable fish shell and make it the default user shell
+  programs.fish.enable = true;
+  users.defaultUserShell = pkgs.fish;
 
   # allow non-free packages
   nixpkgs.config.allowUnfree = true;
 
+  programs.steam = {
+    enable = true;
+    remotePlay.openFirewall = false; # Open or Close Firewall for Remote Play
+    dedicatedServer.openFirewall = false; # Open or Close Firewall for dedicated Servers
+  };
+
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
-    neovim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-    curl
-    texlive.combined.scheme-full
-    emacs
-    nextcloud-client
-    megasync
-    supercollider
-    syncthing
-    mumble
-    blender
-    darktable
-    brave
-    frescobaldi
+
+    # cli-essentials
+    youtube-dl
     lilypond
+
+    # system tools
+    vim 
+    curl
+    neofetch
+    git
+    git-crypt
+    syncthing
+    gh
     sox
-    gimp
-    inkscape
-    scribus
+    ffmpeg
+    pass
+    gnupg
+    exa
     ripgrep
     fd
-    zsh
-    git
-    ffmpeg
-    stow
-    qjackctl
-    pkgs.gnome3.gnome-tweaks
-    pkgs.gnome3.gnome-boxes
-    obs-studio
-    spotify
-    gnupg
+    bat
+    fzf
+    entr
+    ledger
+    tmux
+    htop-vim
+    borgbackup
+    unison
+    rsync
+    rclone
+
+    # c programming
+    clang
+    gnumake
+
+    # security & pentesting suite
+    nmap
+    wireshark
+    aircrack-ng
+    hashcat
+    metasploit
+   
+    # desktop software
+    emacs
+    mu
+    mpv
+    frescobaldi
+    brave
+    mumble
     signal-desktop
+    blender
+    darktable
+    inkscape
+    monero-gui
+    bitwig-studio
+    supercollider
+    reaper
     discord
-    neofetch
-    youtube-dl
-    lame
-    mixxx
+    thunderbird
+    obs-studio
+    # obs-studio-plugins.obs-ndi
+    musescore
+    audacity
+    kdenlive
+    krita
+    ecasound
+    spotify
+    virt-manager
+    onlyoffice-bin
+    firefox
+    freecad
+    vcv-rack
+    pavucontrol
+    qpwgraph
+    helvum
   ];
-
-  programs.steam.enable = true;
-  programs.zsh = {
-    enable = true;
-    autosuggestions.enable = true;
-    ohMyZsh.enable = true;
-    ohMyZsh.plugins = [ "git" ];
-    ohMyZsh.theme = "norm";
-    syntaxHighlighting.enable = true;
-  };
-
-  nixpkgs.config.permittedInsecurePackages = [
-    "python2.7-Pillow-6.2.2"
-  ];
-
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
   # programs.mtr.enable = true;
-   programs.gnupg.agent = {
-     enable = true;
-     enableSSHSupport = true;
-   };
-  programs.gnupg.agent.pinentryFlavor = "curses";
+  programs.gnupg.agent = {
+    enable = true;
+    enableSSHSupport = true;
+  };
 
   # List services that you want to enable:
+
   # Enable the OpenSSH daemon.
-  services.openssh.enable = false;        
-  services.flatpak.enable = true;
-  programs.ssh.startAgent = false;
+  services.openssh.enable = false;
 
   # Open ports in the firewall.
   # networking.firewall.allowedTCPPorts = [ ... ];
   # networking.firewall.allowedUDPPorts = [ ... ];
   # Or disable the firewall altogether.
-  # networking.firewall.enable = false;
+  networking.firewall.enable = true;
 
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions
@@ -255,6 +326,6 @@
   # this value at the release version of the first install of this system.
   # Before changing this value read the documentation for this option
   # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
-  system.stateVersion = "21.05"; # Did you read the comment?
+  system.stateVersion = "21.11"; # Did you read the comment?
 
 }
